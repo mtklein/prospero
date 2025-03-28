@@ -17,8 +17,8 @@
     typedef int32_t  mask;
 #endif
 
-typedef float __attribute__((vector_size(64))) Float;
-typedef mask  __attribute__((vector_size(64))) Mask;
+typedef float __attribute__((vector_size(128))) Float;
+typedef mask  __attribute__((vector_size(128))) Mask;
 #define K (int)(sizeof(Float) / sizeof(float))
 
 static Float sel(Mask m, Float t, Float f) {
