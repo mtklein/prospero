@@ -4,11 +4,12 @@
 #include <stdlib.h>
 
 // TODO:
-//    - loop-invariant hoisting
-//    - common subexpression elimination
-//    - constant propagation?
-//    - strength reduction?
-//    - dead code elimination?
+//    [ ] loop-invariant hoisting
+//        [x] simple constant hoisting
+//    [ ] common subexpression elimination
+//    [ ] constant propagation?
+//    [ ] strength reduction?
+//    [ ] dead code elimination?
 
 #if defined(__wasm)
     typedef long     mask;  // Hey wasm, WTF?
@@ -29,8 +30,8 @@ struct inst {
     union {
         float        imm;
         float const *uni;
-        struct { int x,y; };
     };
+    int x,y;
 };
 
 #define op(name) \
@@ -100,19 +101,38 @@ int build_max (struct builder *b, int x, int y) { return push(b, op_max , .x=x, 
 int build_sqrt(struct builder *b, int x       ) { return push(b, op_sqrt, .x=x      ); }
 
 struct program {
-    int         insts,unused;
+    int         insts,loop;
     struct inst inst[];
 };
 
 struct program* compile(struct builder *b) {
     push(b, op_done);
 
-    size_t const inst_bytes = (size_t)b->insts * sizeof *b->inst;
+    struct program *p = malloc(sizeof *p + (size_t)b->insts * sizeof *b->inst);
+    p->insts = 0;
 
-    struct program *p = malloc(sizeof *p + inst_bytes);
-    p->insts = b->insts;
-    memcpy(p->inst, b->inst, inst_bytes);
+    int *reordered = calloc((size_t)b->insts, sizeof *reordered);
+
+    for (int varying = 0; varying < 2; varying++) {
+        if (varying) {
+            p->loop = p->insts;
+        }
+        for (int i = 0; i < b->insts; i++) {
+            struct inst const *inst = b->inst+i;
+            if ((inst->fn != op_imm) == varying) {
+                p->inst[p->insts] = (struct inst) {
+                    .fn  = inst->fn,
+                    .uni = inst->uni,
+                    .x   = reordered[inst->x],
+                    .y   = reordered[inst->y],
+                };
+                reordered[i] = p->insts++;
+            }
+        }
+    }
+
     free(b);
+    free(reordered);
 
     return p;
 }
@@ -121,15 +141,18 @@ void run(struct program const *p, float *dst, int n) {
     Float stack[STACK];
     Float *val = p->insts <= STACK ? stack : calloc((size_t)p->insts, sizeof *val);
 
-    struct inst const *ip = p->inst;
+    struct inst const *ip = p->inst,  *loop = ip + p->loop;
+    Float             *v  =     val, *vloop =  v + p->loop;
 
     int i = 0;
     for (; i < n/K*K; i += K) {
-        ip->fn(ip,i,val,val,dst);
+        ip->fn(ip,i,v,val,dst);
+        ip =  loop;
+        v  = vloop;
     }
     if (i < n) {
         float tmp[4];
-        ip->fn(ip,i,val,val,tmp);
+        ip->fn(ip,i,v,val,tmp);
         memcpy(dst, tmp, (size_t)(n-i) * sizeof *dst);
     }
 
