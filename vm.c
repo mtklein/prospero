@@ -75,6 +75,7 @@ struct builder {
 
 struct builder* builder(void) {
     struct builder *b = calloc(1, sizeof *b);
+    (void)build_imm(b, 0.0f);  // Handy for default x,y args to point to a known zero constant.
     return b;
 }
 
@@ -112,30 +113,25 @@ struct program* compile(struct builder *b) {
     p->insts = 0;
 
     int *reordered = calloc((size_t)b->insts, sizeof *reordered);
-
     for (int varying = 0; varying < 2; varying++) {
         if (varying) {
             p->loop = p->insts;
         }
         for (int i = 0; i < b->insts; i++) {
-            struct inst const *inst = b->inst+i;
+            struct inst *inst = b->inst+i;
             if ((inst->fn != op_imm) == varying) {
-                p->inst[p->insts] = (struct inst) {
-                    .fn  = inst->fn,
-                    .uni = inst->uni,
-                    .x   = reordered[inst->x],
-                    .y   = reordered[inst->y],
-                };
+                inst->x = reordered[inst->x];
+                inst->y = reordered[inst->y];
+                p->inst[p->insts] = *inst;
                 reordered[i] = p->insts++;
             }
         }
     }
-
-    free(b);
     free(reordered);
-
+    free(b);
     return p;
 }
+
 void run(struct program const *p, float *dst, int n) {
     #define STACK 8192
     Float stack[STACK];
