@@ -128,7 +128,9 @@ void run(struct program const *p, float *dst, int n) {
         ip->fn(ip,i,val,val,dst);
     }
     if (i < n) {
-        __builtin_trap();
+        float tmp[4];
+        ip->fn(ip,i,val,val,tmp);
+        memcpy(dst, tmp, (size_t)(n-i) * sizeof *dst);
     }
 
     if (val != stack) {
