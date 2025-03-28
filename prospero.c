@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -93,9 +92,6 @@ int main(int argc, char* argv[]) {
 
     while (fgets(line, sizeof line, in)) {
         char const *c = line;
-        if (*c == '#') {
-            continue;
-        }
 
         unsigned v;
         int      skip;
@@ -148,9 +144,6 @@ int main(int argc, char* argv[]) {
             *ip++ = (struct inst){ .fn = inst_sqrt, .a=id[a] };
             continue;
         }
-
-        dprintf(2, "didn't understand '%s'\n", c);
-        assert(0);
     }
     *ip = (struct inst){.fn = inst_done};
     fclose(in);
@@ -162,7 +155,7 @@ int main(int argc, char* argv[]) {
     // y: +1 - (IMG_WH-1)*step ~~> -1
     float const step = 2.0f / (IMG_WH-1);
 
-    assert(K == 4);
+    _Static_assert(K == 4, "");
     Float const iota = {0,1,2,3};
 
     for (int j = 0; j < IMG_WH; j += 1)
