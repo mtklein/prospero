@@ -24,17 +24,19 @@ typedef mask  __attribute__((vector_size(16))) Mask;
 
 static struct inst {
     void (*fn)(struct inst const *ip, Float *v, Float const val[], Float x, float y);
-    int a,b;
+    union {
+        float imm;
+        struct { int a,b; };
+    };
 } program[MAX_INSTS];
 
 #define next ip[1].fn(ip+1,v+1,val,x,y); return
 #define inst(name) \
     static void inst_##name(struct inst const *ip, Float *v, Float const val[], Float x, float y)
 
-inst(noop) { next; }
-
-inst(x) { *v =                      x; next; }
-inst(y) { *v = (((Float){0}) + 1) * y; next; }
+inst(x)     { *v =                            x; next; }
+inst(y)     { *v = (((Float){0}) + 1) *       y; next; }
+inst(const) { *v = (((Float){0}) + 1) * ip->imm; next; }
 
 inst(add) { *v =  val[ip->a] + val[ip->b]; next; }
 inst(sub) { *v =  val[ip->a] - val[ip->b]; next; }
@@ -87,61 +89,56 @@ int main(int argc, char* argv[]) {
     char line[MAX_LINE_LENGTH] = {0};
     struct inst *ip = program;
 
-    static Float val[MAX_INSTS];
-    static int    id[MAX_INSTS];
-
     while (fgets(line, sizeof line, in)) {
         char const *c = line;
 
-        unsigned v;
+        unsigned id;
         int      skip;
-        sscanf(c, "_%x %n", &v, &skip);
+        sscanf(c, "_%x %n", &id, &skip);
         c += skip;
-        id[v] = (int)(ip - program);
 
         if (0 == strcmp(c, "var-x\n")) { *ip++ = (struct inst){ .fn=inst_x }; continue; }
         if (0 == strcmp(c, "var-y\n")) { *ip++ = (struct inst){ .fn=inst_y }; continue; }
 
         float imm;
         if (1 == sscanf(c, "const %f\n", &imm)) {
-            val[id[v]] = ((Float){0} + 1) * imm;
-            *ip++ = (struct inst){ .fn=inst_noop };
+            *ip++ = (struct inst){ .fn=inst_const, .imm=imm };
             continue;
         }
 
         unsigned a,b;
         if (2 == sscanf(c, "add _%x _%x\n", &a,&b)) {
-            *ip++ = (struct inst){ .fn = inst_add, .a=id[a], .b=id[b] };
+            *ip++ = (struct inst){ .fn = inst_add, .a=(int)a, .b=(int)b };
             continue;
         }
         if (2 == sscanf(c, "sub _%x _%x\n", &a,&b)) {
-            *ip++ = (struct inst){ .fn = inst_sub, .a=id[a], .b=id[b] };
+            *ip++ = (struct inst){ .fn = inst_sub, .a=(int)a, .b=(int)b };
             continue;
         }
         if (2 == sscanf(c, "mul _%x _%x\n", &a,&b)) {
-            *ip++ = (struct inst){ .fn = inst_mul, .a=id[a], .b=id[b] };
+            *ip++ = (struct inst){ .fn = inst_mul, .a=(int)a, .b=(int)b };
             continue;
         }
         if (2 == sscanf(c, "max _%x _%x\n", &a,&b)) {
-            *ip++ = (struct inst){ .fn = inst_max, .a=id[a], .b=id[b] };
+            *ip++ = (struct inst){ .fn = inst_max, .a=(int)a, .b=(int)b };
             continue;
         }
         if (2 == sscanf(c, "min _%x _%x\n", &a,&b)) {
-            *ip++ = (struct inst){ .fn = inst_min, .a=id[a], .b=id[b] };
+            *ip++ = (struct inst){ .fn = inst_min, .a=(int)a, .b=(int)b };
             continue;
         }
 
         if (1 == sscanf(c, "square _%x\n", &a)) {
-            *ip++ = (struct inst){ .fn = inst_mul, .a=id[a], .b=id[a] };
+            *ip++ = (struct inst){ .fn = inst_mul, .a=(int)a, .b=(int)a };
             continue;
         }
 
         if (1 == sscanf(c, "neg _%x\n", &a)) {
-            *ip++ = (struct inst){ .fn = inst_neg, .a=id[a] };
+            *ip++ = (struct inst){ .fn = inst_neg, .a=(int)a };
             continue;
         }
         if (1 == sscanf(c, "sqrt _%x\n", &a)) {
-            *ip++ = (struct inst){ .fn = inst_sqrt, .a=id[a] };
+            *ip++ = (struct inst){ .fn = inst_sqrt, .a=(int)a };
             continue;
         }
     }
@@ -164,6 +161,7 @@ int main(int argc, char* argv[]) {
               y  = +1 - (float)j * step;
         Float x  = x0 + iota * step;
 
+        static Float val[MAX_INSTS];
         program->fn(program,val,val,x,y);
     }
 
