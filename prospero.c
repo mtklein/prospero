@@ -5,8 +5,13 @@
 #include <string.h>
 #include <unistd.h>
 
-#define DIM 1024
-#define MAX_INSTS 1024*1024
+#if defined(__ARM_NEON)
+    #include <arm_neon.h>
+#endif
+
+#define IMG_WH          1024
+#define MAX_LINE_LENGTH 1024
+#define MAX_INSTS       1024*1024
 
 #if defined(__wasm)
     typedef long     mask;  // Hey wasm, WTF?
@@ -17,29 +22,6 @@
 typedef float __attribute__((vector_size(16))) Float;
 typedef mask  __attribute__((vector_size(16))) Mask;
 #define K (int)(sizeof(Float) / sizeof(float))
-
-static Float splat(float x) {
-    return ((Float){0} + 1) * x;
-}
-
-static Float sel(Mask m, Float t, Float f) {
-    return (Float)( (m & (Mask)t) | (~m & (Mask)f) );
-}
-
-static Float sqrtF(Float x) {
-    assert(K == 4);
-    return (Float){
-        sqrtf(x[0]),
-        sqrtf(x[1]),
-        sqrtf(x[2]),
-        sqrtf(x[3]),
-    };
-}
-
-static Float iota(void) {
-    assert(K == 4);
-    return (Float){0,1,2,3};
-}
 
 static struct inst {
     void (*fn)(struct inst const *ip, Float *v, Float const val[], Float x, float y);
@@ -54,23 +36,43 @@ static struct inst {
 #define inst(name) \
     static void inst_##name(struct inst const *ip, Float *v, Float const val[], Float x, float y)
 
-inst(x)     { *v =             x ; next; }
-inst(y)     { *v = splat(      y); next; }
-inst(const) { *v = splat(ip->imm); next; }
+inst(x)     { *v =                            x; next; }
+inst(y)     { *v = (((Float){0}) + 1) *       y; next; }
+inst(const) { *v = (((Float){0}) + 1) * ip->imm; next; }
 
-inst(add) { *v = val[ip->a] + val[ip->b]; next; }
-inst(sub) { *v = val[ip->a] - val[ip->b]; next; }
-inst(mul) { *v = val[ip->a] * val[ip->b]; next; }
+inst(add) { *v =  val[ip->a] + val[ip->b]; next; }
+inst(sub) { *v =  val[ip->a] - val[ip->b]; next; }
+inst(mul) { *v =  val[ip->a] * val[ip->b]; next; }
+inst(neg) { *v = -val[ip->a]             ; next; }
 
-inst(max) { *v = sel(val[ip->a] > val[ip->b], val[ip->a], val[ip->b]); next; }
-inst(min) { *v = sel(val[ip->a] < val[ip->b], val[ip->a], val[ip->b]); next; }
+#if defined(__ARM_NEON)
+    inst(min) { *v = vminq_f32(val[ip->a], val[ip->b]); next; }
+    inst(max) { *v = vmaxq_f32(val[ip->a], val[ip->b]); next; }
+#else
+    static Float sel(Mask m, Float t, Float f) {
+        return (Float)( (m & (Mask)t) | (~m & (Mask)f) );
+    }
+    inst(min) { *v = sel(val[ip->a] < val[ip->b], val[ip->a], val[ip->b]); next; }
+    inst(max) { *v = sel(val[ip->a] > val[ip->b], val[ip->a], val[ip->b]); next; }
+#endif
 
-inst(neg)  { *v =      -val[ip->a] ; next; }
-inst(sqrt) { *v = sqrtF(val[ip->a]); next; }
+inst(sqrt) {
+#if defined(__ARM_NEON)
+    *v = vsqrtq_f32(val[ip->a]);
+#else
+    *v = (Float){
+        sqrtf(val[ip->a][0]),
+        sqrtf(val[ip->a][1]),
+        sqrtf(val[ip->a][2]),
+        sqrtf(val[ip->a][3]),
+    };
+#endif
+    next;
+}
 
 inst(done) {
-    typedef char __attribute__((vector_size(K))) Byte;
-    Byte lt_zero = __builtin_convertvector(v[-1] < 0, Byte);
+    typedef char __attribute__((vector_size(K))) Char;
+    Char lt_zero = __builtin_convertvector(v[-1] < 0, Char);
     write(1, &lt_zero, sizeof lt_zero);
 
     (void)ip;
@@ -86,7 +88,7 @@ inst(done) {
 int main(int argc, char* argv[]) {
     FILE *in  = fopen(argc > 1 ? argv[1] : "prospero.vm", "r");
 
-    char line[1024] = {0};
+    char line[MAX_LINE_LENGTH] = {0};
     struct inst *ip = program;
 
     while (fgets(line, sizeof line, in)) {
@@ -153,17 +155,20 @@ int main(int argc, char* argv[]) {
     fclose(in);
 
 
-    dprintf(1, "P5\n%d %d\n255\n", DIM, DIM);
+    dprintf(1, "P5\n%d %d\n255\n", IMG_WH, IMG_WH);
 
-    // x: -1 + (DIM-1)*step ~~> +1
-    // y: +1 - (DIM-1)*step ~~> -1
-    float const step = 2.0f / (DIM-1);
+    // x: -1 + (IMG_WH-1)*step ~~> +1
+    // y: +1 - (IMG_WH-1)*step ~~> -1
+    float const step = 2.0f / (IMG_WH-1);
 
-    for (int j = 0; j < DIM; j += 1)
-    for (int i = 0; i < DIM; i += K) {
+    assert(K == 4);
+    Float const iota = {0,1,2,3};
+
+    for (int j = 0; j < IMG_WH; j += 1)
+    for (int i = 0; i < IMG_WH; i += K) {
         float x0 = -1 + (float)i * step,
               y  = +1 - (float)j * step;
-        Float x  = x0 + iota() * step;
+        Float x  = x0 + iota * step;
 
         static Float val[MAX_INSTS];
         program->fn(program,val,val,x,y);
