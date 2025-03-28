@@ -28,7 +28,6 @@ static struct inst {
     union {
         float imm;
         struct { int a,b; };
-        FILE *file;
     };
 } program[MAX_INSTS];
 
