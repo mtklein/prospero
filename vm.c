@@ -17,8 +17,8 @@
     typedef int32_t  mask;
 #endif
 
-typedef float __attribute__((vector_size(32))) Float;
-typedef mask  __attribute__((vector_size(32))) Mask;
+typedef float __attribute__((vector_size(64))) Float;
+typedef mask  __attribute__((vector_size(64))) Mask;
 #define K (int)(sizeof(Float) / sizeof(float))
 
 static Float sel(Mask m, Float t, Float f) {
@@ -39,8 +39,8 @@ struct inst {
 #define next ip[1].fn(ip+1,i,r+1,v,dst); return
 
 op(index) {
-    _Static_assert(K == 8, "");
-    *r = (Float){0,1,2,3, 4,5,6,7} + (float)i;
+    _Static_assert(K == 16, "");
+    *r = (Float){0,1,2,3, 4,5,6,7, 8,9,10,11, 12,13,14,15} + (float)i;
     next;
 }
 
@@ -55,7 +55,7 @@ op(min) { *r = sel(v[ip->x] < v[ip->y], v[ip->x], v[ip->y]); next; }
 op(max) { *r = sel(v[ip->x] > v[ip->y], v[ip->x], v[ip->y]); next; }
 
 op(sqrt) {
-    _Static_assert(K == 8, "");
+    _Static_assert(K == 16, "");
     *r = (Float) {
         sqrtf(v[ip->x][0]),
         sqrtf(v[ip->x][1]),
@@ -66,6 +66,16 @@ op(sqrt) {
         sqrtf(v[ip->x][5]),
         sqrtf(v[ip->x][6]),
         sqrtf(v[ip->x][7]),
+
+        sqrtf(v[ip->x][ 8]),
+        sqrtf(v[ip->x][ 9]),
+        sqrtf(v[ip->x][10]),
+        sqrtf(v[ip->x][11]),
+
+        sqrtf(v[ip->x][12]),
+        sqrtf(v[ip->x][13]),
+        sqrtf(v[ip->x][14]),
+        sqrtf(v[ip->x][15]),
     };
     next;
 }
