@@ -193,12 +193,10 @@ struct program* compile(struct builder *b) {
 }
 
 void run(struct program const *p, float *dst, int n) {
-    #define STACK 8192
-    Float stack[STACK];
-    Float *val = p->insts <= STACK ? stack : calloc((size_t)p->insts, sizeof *val);
+    Float *val = calloc((size_t)p->insts, sizeof *val);
 
     struct inst const *ip = p->inst,  *loop = ip + p->loop;
-    Float             *v  =     val, *vloop =  v + p->loop;
+    Float             *v  =     val, *vloop = v  + p->loop;
 
     int i = 0;
     for (; i < n/K*K; i += K) {
@@ -212,7 +210,5 @@ void run(struct program const *p, float *dst, int n) {
         memcpy(dst, tmp, (size_t)(n-i) * sizeof *dst);
     }
 
-    if (val != stack) {
-        free(val);
-    }
+    free(val);
 }
