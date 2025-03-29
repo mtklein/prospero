@@ -39,11 +39,10 @@ struct inst {
 #define next ip[1].fn(ip+1,i,r+1,v,dst); return
 
 op(index) {
-    Float iota = {0};
-    for (int j = 0; j < K; j++) {
-        iota[j] = (float)j;
-    }
-    *r = iota + (float)i;
+    _Static_assert(K == 32, "");
+    *r = (float)i
+       + (Float){ 0, 1, 2, 3,  4, 5, 6, 7,  8, 9,10,11, 12,13,14,15,
+                 16,17,18,19, 20,21,22,23, 24,25,26,27, 28,29,30,31};
     next;
 }
 
@@ -58,9 +57,17 @@ op(min) { *r = sel(v[ip->x] < v[ip->y], v[ip->x], v[ip->y]); next; }
 op(max) { *r = sel(v[ip->x] > v[ip->y], v[ip->x], v[ip->y]); next; }
 
 op(sqrt) {
-    for (int j = 0; j < K; j++) {
-        (*r)[j] = sqrtf(v[ip->x][j]);
-    }
+    _Static_assert(K == 32, "");
+    *r = (Float) {
+        sqrtf(v[ip->x][ 0]), sqrtf(v[ip->x][ 1]), sqrtf(v[ip->x][ 2]), sqrtf(v[ip->x][ 3]),
+        sqrtf(v[ip->x][ 4]), sqrtf(v[ip->x][ 5]), sqrtf(v[ip->x][ 6]), sqrtf(v[ip->x][ 7]),
+        sqrtf(v[ip->x][ 8]), sqrtf(v[ip->x][ 9]), sqrtf(v[ip->x][10]), sqrtf(v[ip->x][11]),
+        sqrtf(v[ip->x][12]), sqrtf(v[ip->x][13]), sqrtf(v[ip->x][14]), sqrtf(v[ip->x][15]),
+        sqrtf(v[ip->x][16]), sqrtf(v[ip->x][17]), sqrtf(v[ip->x][18]), sqrtf(v[ip->x][19]),
+        sqrtf(v[ip->x][20]), sqrtf(v[ip->x][21]), sqrtf(v[ip->x][22]), sqrtf(v[ip->x][23]),
+        sqrtf(v[ip->x][24]), sqrtf(v[ip->x][25]), sqrtf(v[ip->x][26]), sqrtf(v[ip->x][27]),
+        sqrtf(v[ip->x][28]), sqrtf(v[ip->x][29]), sqrtf(v[ip->x][30]), sqrtf(v[ip->x][31]),
+    };
     next;
 }
 
