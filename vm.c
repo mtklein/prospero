@@ -28,9 +28,12 @@ typedef mask  __attribute__((vector_size(128))) Mask;
 
 struct inst {
     void (*fn)(struct inst const *ip, int i, Float *r, Float const v[], float *dst);
-    float const *uni;
-    float        imm;
-    int          x,y,z;
+    union {
+        float const *uni;
+        float        imm;
+    };
+    int x,y,z;
+    int reordered;
 };
 
 #define op(name) \
@@ -48,12 +51,9 @@ op(index) {
 op(imm) { *r = ((Float){0} + 1) *  ip->imm; next; }
 op(uni) { *r = ((Float){0} + 1) * *ip->uni; next; }
 
-op(add) { *r = v[ip->x] + v[ip->y]           ; next; }
-op(sub) { *r = v[ip->x] - v[ip->y]           ; next; }
-op(mul) { *r = v[ip->x] * v[ip->y]           ; next; }
-op(fma) { *r = v[ip->x] * v[ip->y] + v[ip->z]; next; }
-op(fms) { *r = v[ip->x] * v[ip->y] - v[ip->z]; next; }
-op(fmz) { *r = v[ip->z] - v[ip->x] * v[ip->y]; next; }
+op(add) { *r = v[ip->x] + v[ip->y]; next; }
+op(sub) { *r = v[ip->x] - v[ip->y]; next; }
+op(mul) { *r = v[ip->x] * v[ip->y]; next; }
 
 #if 1 && defined(__ARM_NEON)
     op(min) {
@@ -121,9 +121,8 @@ op(sqrt) {
 }
 
 op(done) {
-    (void)ip;
-    (void)v;
-    memcpy(dst+i, r-1, sizeof *r);
+    (void)r;
+    memcpy(dst+i, v+ip->x, sizeof v[ip->x]);
 }
 
 #undef op
@@ -155,27 +154,8 @@ int build_index(struct builder *b                  ) { return push(b, op_index  
 int build_imm  (struct builder *b, float        imm) { return push(b, op_imm, .imm=imm); }
 int build_uni  (struct builder *b, float const *uni) { return push(b, op_uni, .uni=uni); }
 
-#define FMA 0
-
-int build_add (struct builder *b, int x, int y) {
-    if ((FMA) && b->inst[x].fn == op_mul) {
-        return push(b, op_fma, .x=b->inst[x].x, .y=b->inst[x].y, .z=y);
-    }
-    if ((FMA) && b->inst[y].fn == op_mul) {
-        return push(b, op_fma, .x=b->inst[y].x, .y=b->inst[y].y, .z=x);
-    }
-    return push(b, op_add , .x=x, .y=y);
-}
-
-int build_sub (struct builder *b, int x, int y) {
-    if ((FMA) && b->inst[x].fn == op_mul) {
-        return push(b, op_fms, .x=b->inst[x].x, .y=b->inst[x].y, .z=y);
-    }
-    if ((FMA) && b->inst[y].fn == op_mul) {
-        return push(b, op_fmz, .x=b->inst[y].x, .y=b->inst[y].y, .z=x);
-    }
-    return push(b, op_sub , .x=x, .y=y);
-}
+int build_add (struct builder *b, int x, int y) { return push(b, op_add , .x=x, .y=y); }
+int build_sub (struct builder *b, int x, int y) { return push(b, op_sub , .x=x, .y=y); }
 int build_mul (struct builder *b, int x, int y) { return push(b, op_mul , .x=x, .y=y); }
 int build_min (struct builder *b, int x, int y) { return push(b, op_min , .x=x, .y=y); }
 int build_max (struct builder *b, int x, int y) { return push(b, op_max , .x=x, .y=y); }
@@ -187,12 +167,11 @@ struct program {
 };
 
 struct program* compile(struct builder *b) {
-    push(b, op_done);
+    push(b, op_done, .x=b->insts-1);
 
     struct program *p = malloc(sizeof *p + (size_t)b->insts * sizeof *b->inst);
     p->insts = 0;
 
-    int *reordered = calloc((size_t)b->insts, sizeof *reordered);
     for (int varying = 0; varying < 2; varying++) {
         if (varying) {
             p->loop = p->insts;
@@ -200,14 +179,14 @@ struct program* compile(struct builder *b) {
         for (int i = 0; i < b->insts; i++) {
             struct inst *inst = b->inst+i;
             if ((inst->fn != op_imm) == varying) {
-                inst->x = reordered[inst->x];
-                inst->y = reordered[inst->y];
+                inst->x = b->inst[inst->x].reordered;
+                inst->y = b->inst[inst->y].reordered;
+                inst->z = b->inst[inst->z].reordered;
                 p->inst[p->insts] = *inst;
-                reordered[i] = p->insts++;
+                inst->reordered = p->insts++;
             }
         }
     }
-    free(reordered);
     free(b);
     return p;
 }
