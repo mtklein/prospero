@@ -3,6 +3,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+#if defined(__ARM_NEON)
+    #include <arm_neon.h>
+#endif
+
 // TODO:
 //    [ ] loop-invariant hoisting
 //        [x] simple constant hoisting
@@ -21,9 +25,6 @@ typedef float __attribute__((vector_size(128))) Float;
 typedef mask  __attribute__((vector_size(128))) Mask;
 #define K (int)(sizeof(Float) / sizeof(float))
 
-static Float sel(Mask m, Float t, Float f) {
-    return (Float)( (m & (Mask)t) | (~m & (Mask)f) );
-}
 
 struct inst {
     void (*fn)(struct inst const *ip, int i, Float *r, Float const v[], float *dst);
@@ -53,11 +54,57 @@ op(add) { *r = v[ip->x] + v[ip->y]; next; }
 op(sub) { *r = v[ip->x] - v[ip->y]; next; }
 op(mul) { *r = v[ip->x] * v[ip->y]; next; }
 
-op(min) { *r = sel(v[ip->x] < v[ip->y], v[ip->x], v[ip->y]); next; }
-op(max) { *r = sel(v[ip->x] > v[ip->y], v[ip->x], v[ip->y]); next; }
+#if 1 && defined(__ARM_NEON)
+    op(min) {
+        _Static_assert(K == 32, "");
+        union { Float vec; float32x4_t part[8]; } x = {v[ip->x]}, y = {v[ip->y]};
+        x.part[0] = vminq_f32(x.part[0], y.part[0]);
+        x.part[1] = vminq_f32(x.part[1], y.part[1]);
+        x.part[2] = vminq_f32(x.part[2], y.part[2]);
+        x.part[3] = vminq_f32(x.part[3], y.part[3]);
+        x.part[4] = vminq_f32(x.part[4], y.part[4]);
+        x.part[5] = vminq_f32(x.part[5], y.part[5]);
+        x.part[6] = vminq_f32(x.part[6], y.part[6]);
+        x.part[7] = vminq_f32(x.part[7], y.part[7]);
+        *r = x.vec;
+        next;
+    }
+    op(max) {
+        _Static_assert(K == 32, "");
+        union { Float vec; float32x4_t part[8]; } x = {v[ip->x]}, y = {v[ip->y]};
+        x.part[0] = vmaxq_f32(x.part[0], y.part[0]);
+        x.part[1] = vmaxq_f32(x.part[1], y.part[1]);
+        x.part[2] = vmaxq_f32(x.part[2], y.part[2]);
+        x.part[3] = vmaxq_f32(x.part[3], y.part[3]);
+        x.part[4] = vmaxq_f32(x.part[4], y.part[4]);
+        x.part[5] = vmaxq_f32(x.part[5], y.part[5]);
+        x.part[6] = vmaxq_f32(x.part[6], y.part[6]);
+        x.part[7] = vmaxq_f32(x.part[7], y.part[7]);
+        *r = x.vec;
+        next;
+    }
+#else
+    static Float sel(Mask m, Float t, Float f) {
+        return (Float)( (m & (Mask)t) | (~m & (Mask)f) );
+    }
+    op(min) { *r = sel(v[ip->x] < v[ip->y], v[ip->x], v[ip->y]); next; }
+    op(max) { *r = sel(v[ip->x] > v[ip->y], v[ip->x], v[ip->y]); next; }
+#endif
 
 op(sqrt) {
     _Static_assert(K == 32, "");
+#if 1 && defined(__ARM_NEON)
+    union { Float vec; float32x4_t part[8]; } x = {v[ip->x]};
+    x.part[0] = vsqrtq_f32(x.part[0]);
+    x.part[1] = vsqrtq_f32(x.part[1]);
+    x.part[2] = vsqrtq_f32(x.part[2]);
+    x.part[3] = vsqrtq_f32(x.part[3]);
+    x.part[4] = vsqrtq_f32(x.part[4]);
+    x.part[5] = vsqrtq_f32(x.part[5]);
+    x.part[6] = vsqrtq_f32(x.part[6]);
+    x.part[7] = vsqrtq_f32(x.part[7]);
+    *r = x.vec;
+#else
     *r = (Float) {
         sqrtf(v[ip->x][ 0]), sqrtf(v[ip->x][ 1]), sqrtf(v[ip->x][ 2]), sqrtf(v[ip->x][ 3]),
         sqrtf(v[ip->x][ 4]), sqrtf(v[ip->x][ 5]), sqrtf(v[ip->x][ 6]), sqrtf(v[ip->x][ 7]),
@@ -68,6 +115,7 @@ op(sqrt) {
         sqrtf(v[ip->x][24]), sqrtf(v[ip->x][25]), sqrtf(v[ip->x][26]), sqrtf(v[ip->x][27]),
         sqrtf(v[ip->x][28]), sqrtf(v[ip->x][29]), sqrtf(v[ip->x][30]), sqrtf(v[ip->x][31]),
     };
+#endif
     next;
 }
 
