@@ -10,10 +10,11 @@
 // TODO:
 //    [ ] loop-invariant hoisting
 //        [x] simple constant hoisting
+//        [ ] hoist uniform math too
 //    [ ] common subexpression elimination
 //    [ ] constant propagation?
 //    [ ] strength reduction?
-//    [ ] dead code elimination?
+//    [~] dead code elimination?
 
 #if defined(__wasm)
     typedef long     mask;  // Hey wasm, WTF?
